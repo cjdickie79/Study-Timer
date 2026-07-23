@@ -1,0 +1,915 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Study Timer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@1,500;1,600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --study-color: #5b6ee1;
+    --break-color: #3fb27f;
+    --long-break-color: #2a9d8f;
+    --bg: #1c1e26;
+    --card: #262a36;
+    --text: #f0f1f5;
+    --muted: #9aa0b4;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    min-height: 100vh;
+    background: var(--bg);
+  }
+  body {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    color: var(--text);
+    overflow: hidden;
+  }
+
+  .bg-layer {
+    position: fixed;
+    inset: 0;
+    background-size: cover;
+    background-position: center;
+    opacity: 0;
+    filter: brightness(1.25) saturate(1.08);
+    transition: opacity 2s ease-in-out;
+    z-index: 0;
+  }
+  .bg-layer.active { opacity: 1; }
+  .bg-overlay {
+    position: fixed;
+    inset: 0;
+    background: linear-gradient(180deg, rgba(10,10,16,0.2), rgba(10,10,16,0.4));
+    z-index: 1;
+  }
+
+  .card {
+    position: relative;
+    z-index: 2;
+    background: rgba(30, 33, 44, 0.82);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 24px;
+    padding: 40px 40px 32px;
+    width: 400px;
+    max-width: calc(100vw - 32px);
+    box-sizing: border-box;
+    text-align: center;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.45);
+  }
+  .mode-label {
+    font-size: 14px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    font-weight: 600;
+    color: var(--muted);
+    margin-bottom: 8px;
+  }
+  .mode-label.study { color: var(--study-color); }
+  .mode-label.break { color: var(--break-color); }
+  .mode-label.longbreak { color: var(--long-break-color); }
+
+  .ring-wrap {
+    position: relative;
+    width: 280px;
+    height: 280px;
+    margin: 12px auto 24px;
+  }
+  svg { transform: rotate(-90deg); }
+  .ring-bg { fill: none; stroke: rgba(255,255,255,0.08); stroke-width: 10; }
+  .ring-progress {
+    fill: none;
+    stroke-width: 10;
+    stroke-linecap: round;
+    transition: stroke-dashoffset 1s linear, stroke 0.4s ease;
+  }
+  .time-display {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 56px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    text-shadow: 0 2px 12px rgba(0,0,0,0.4);
+  }
+
+  .controls {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+    margin-bottom: 24px;
+  }
+  button {
+    border: none;
+    border-radius: 12px;
+    padding: 12px 22px;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: transform 0.15s ease, opacity 0.15s ease;
+    font-family: inherit;
+  }
+  button:active { transform: scale(0.95); }
+  #startPauseBtn {
+    background: var(--study-color);
+    color: white;
+    min-width: 110px;
+  }
+  #startPauseBtn.break-active { background: var(--break-color); }
+  #resetBtn, #skipBtn {
+    background: rgba(255,255,255,0.1);
+    color: var(--text);
+  }
+  button:hover { opacity: 0.9; }
+  .test-btn {
+    background: rgba(255,255,255,0.1);
+    color: var(--text);
+    padding: 8px 14px;
+    font-size: 12px;
+    border-radius: 8px;
+    flex-shrink: 0;
+    white-space: nowrap;
+  }
+
+  .stats {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 8px;
+    padding-top: 20px;
+    border-top: 1px solid rgba(255,255,255,0.1);
+    font-size: 14px;
+    color: var(--muted);
+  }
+  .stat-block {
+    flex: 1;
+    min-width: 0;
+  }
+  .stat-block:nth-child(2) { text-align: center; }
+  .stat-block:nth-child(3) { text-align: right; }
+  .stat-value {
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--text);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .stat-label {
+    margin-top: 3px;
+    font-size: 11px;
+    letter-spacing: 0.3px;
+  }
+
+  .settings-toggle {
+    margin-top: 16px;
+    font-size: 13px;
+    color: var(--muted);
+    cursor: pointer;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 10;
+    background: rgba(5,5,10,0.6);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+  }
+  .modal-overlay.open { display: flex; }
+  .settings {
+    text-align: left;
+    background: rgba(28, 31, 42, 0.97);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 20px;
+    padding: 22px 24px 24px;
+    width: 380px;
+    max-width: 100%;
+    max-height: 82vh;
+    overflow-y: auto;
+    box-shadow: 0 25px 70px rgba(0,0,0,0.5);
+  }
+  .modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 18px;
+  }
+  .modal-header h2 {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--text);
+  }
+  .modal-close {
+    background: rgba(255,255,255,0.08);
+    border: none;
+    color: var(--text);
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    font-size: 18px;
+    line-height: 1;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    flex-shrink: 0;
+  }
+  .modal-close:hover { background: rgba(255,255,255,0.18); }
+  .settings-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+    font-size: 14px;
+    gap: 10px;
+  }
+  .settings-row:last-child { margin-bottom: 0; }
+  .settings-row.stack {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+  .settings input[type="number"] {
+    width: 60px;
+    flex-shrink: 0;
+    background: var(--bg);
+    border: 1px solid rgba(255,255,255,0.15);
+    color: var(--text);
+    border-radius: 6px;
+    padding: 6px;
+    text-align: center;
+    font-family: inherit;
+  }
+  .settings select {
+    background: var(--bg);
+    border: 1px solid rgba(255,255,255,0.15);
+    color: var(--text);
+    border-radius: 6px;
+    padding: 8px 10px;
+    font-family: inherit;
+    font-size: 13px;
+    min-width: 0;
+    flex: 1;
+  }
+  .settings input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+    accent-color: var(--study-color);
+  }
+  .sound-row-controls {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    width: 100%;
+  }
+
+  .location-caption {
+    position: fixed;
+    right: 24px;
+    bottom: 20px;
+    z-index: 2;
+    background: rgba(10,10,16,0.4);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    padding: 10px 20px;
+    border-radius: 12px;
+    box-shadow: 0 6px 24px rgba(0,0,0,0.35);
+    opacity: 0;
+    transition: opacity 1.2s ease;
+    text-align: right;
+    border: 1px solid rgba(255,255,255,0.08);
+  }
+  .location-caption.visible { opacity: 1; }
+  .location-caption-label {
+    font-size: 10px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 2px;
+  }
+  .location-caption-name {
+    font-family: 'Cormorant Garamond', 'Georgia', serif;
+    font-style: italic;
+    font-weight: 600;
+    font-size: 21px;
+    color: #f5f0e6;
+  }
+</style>
+</head>
+<body>
+
+<div class="bg-layer" id="bgA"></div>
+<div class="bg-layer" id="bgB"></div>
+<div class="bg-overlay" id="bgOverlay"></div>
+
+<div class="card">
+  <div class="mode-label study" id="modeLabel">Study Time</div>
+
+  <div class="ring-wrap">
+    <svg width="280" height="280">
+      <circle class="ring-bg" cx="140" cy="140" r="126"></circle>
+      <circle class="ring-progress" id="ringProgress" cx="140" cy="140" r="126"></circle>
+    </svg>
+    <div class="time-display" id="timeDisplay">25:00</div>
+  </div>
+
+  <div class="controls">
+    <button id="startPauseBtn">Start</button>
+    <button id="skipBtn">Skip</button>
+    <button id="resetBtn">Reset</button>
+  </div>
+
+  <div class="stats">
+    <div class="stat-block">
+      <div class="stat-value" id="sessionCount">0</div>
+      <div class="stat-label">sessions today</div>
+    </div>
+    <div class="stat-block">
+      <div class="stat-value" id="studiedToday">0m</div>
+      <div class="stat-label">studied today</div>
+    </div>
+    <div class="stat-block">
+      <div class="stat-value" id="nextLongBreak">in 4</div>
+      <div class="stat-label">to long break</div>
+    </div>
+  </div>
+
+  <div class="settings-toggle" id="settingsToggle">Settings</div>
+</div>
+
+<div class="modal-overlay" id="settingsOverlay">
+  <div class="settings" id="settings">
+    <div class="modal-header">
+      <h2>Settings</h2>
+      <button type="button" class="modal-close" id="settingsCloseBtn" aria-label="Close settings">&times;</button>
+    </div>
+    <div class="settings-row">
+      <label>Study (min)</label>
+      <input type="number" id="studyMin" min="1" max="120" value="25">
+    </div>
+    <div class="settings-row">
+      <label>Short break (min)</label>
+      <input type="number" id="breakMin" min="1" max="60" value="5">
+    </div>
+    <div class="settings-row">
+      <label>Long break (min)</label>
+      <input type="number" id="longBreakMin" min="1" max="60" value="15">
+    </div>
+    <div class="settings-row">
+      <label>Sessions before long break</label>
+      <input type="number" id="longBreakEvery" min="1" max="10" value="4">
+    </div>
+    <div class="settings-row stack">
+      <label>Alert sound</label>
+      <div class="sound-row-controls">
+        <select id="soundSelect">
+          <option value="bell">Classic Bell</option>
+          <option value="beep">Digital Beep</option>
+          <option value="chime">Soft Chime</option>
+          <option value="marimba">Marimba</option>
+          <option value="windchime">Wind Chime</option>
+        </select>
+        <button type="button" class="test-btn" id="testSoundBtn">Test</button>
+      </div>
+    </div>
+    <div class="settings-row">
+      <label>Rotating backgrounds</label>
+      <input type="checkbox" id="bgToggle" checked>
+    </div>
+    <div class="settings-row">
+      <label>Rotate every (min)</label>
+      <input type="number" id="rotateMin" min="1" max="30" value="3">
+    </div>
+  </div>
+</div>
+
+<div class="location-caption" id="locationCaption">
+  <div class="location-caption-label">Now showing</div>
+  <div class="location-caption-name" id="locationName"></div>
+</div>
+
+<script>
+(function () {
+  const RADIUS = 126;
+  const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
+
+  const modeLabel = document.getElementById('modeLabel');
+  const timeDisplay = document.getElementById('timeDisplay');
+  const ringProgress = document.getElementById('ringProgress');
+  const startPauseBtn = document.getElementById('startPauseBtn');
+  const skipBtn = document.getElementById('skipBtn');
+  const resetBtn = document.getElementById('resetBtn');
+  const sessionCountEl = document.getElementById('sessionCount');
+  const studiedTodayEl = document.getElementById('studiedToday');
+  const nextLongBreakEl = document.getElementById('nextLongBreak');
+  const settingsToggle = document.getElementById('settingsToggle');
+  const settingsOverlay = document.getElementById('settingsOverlay');
+  const settingsCloseBtn = document.getElementById('settingsCloseBtn');
+  const studyMinInput = document.getElementById('studyMin');
+  const breakMinInput = document.getElementById('breakMin');
+  const longBreakMinInput = document.getElementById('longBreakMin');
+  const longBreakEveryInput = document.getElementById('longBreakEvery');
+  const soundSelect = document.getElementById('soundSelect');
+  const testSoundBtn = document.getElementById('testSoundBtn');
+  const bgToggle = document.getElementById('bgToggle');
+  const rotateMinInput = document.getElementById('rotateMin');
+  const bgA = document.getElementById('bgA');
+  const bgB = document.getElementById('bgB');
+  const bgOverlay = document.getElementById('bgOverlay');
+  const captionEl = document.getElementById('locationCaption');
+  const captionName = document.getElementById('locationName');
+
+  ringProgress.style.strokeDasharray = CIRCUMFERENCE;
+
+  // ---------- Sound library (synthesized, works fully offline) ----------
+  function synthBell(ctx) {
+    const now = ctx.currentTime;
+    [880, 1108, 1320].forEach((f, i) => {
+      const offset = i * 0.3;
+      const osc = ctx.createOscillator();
+      osc.type = 'sine';
+      osc.frequency.value = f;
+      const gain = ctx.createGain();
+      gain.gain.setValueAtTime(0.0001, now + offset);
+      gain.gain.exponentialRampToValueAtTime(0.25, now + offset + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + offset + 2.6);
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.start(now + offset); osc.stop(now + offset + 2.7);
+    });
+  }
+
+  function synthBeep(ctx) {
+    const now = ctx.currentTime;
+    [0, 0.45, 0.9, 1.35, 1.8, 2.25, 2.7].forEach(offset => {
+      const osc = ctx.createOscillator();
+      osc.type = 'square';
+      osc.frequency.value = 1200;
+      const gain = ctx.createGain();
+      gain.gain.setValueAtTime(0.0001, now + offset);
+      gain.gain.exponentialRampToValueAtTime(0.15, now + offset + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + offset + 0.18);
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.start(now + offset); osc.stop(now + offset + 0.2);
+    });
+  }
+
+  function synthChime(ctx) {
+    const now = ctx.currentTime;
+    [1046.5, 784, 659.25].forEach((f, i) => {
+      const offset = i * 0.6;
+      const osc = ctx.createOscillator();
+      osc.type = 'sine';
+      osc.frequency.value = f;
+      const gain = ctx.createGain();
+      gain.gain.setValueAtTime(0.0001, now + offset);
+      gain.gain.exponentialRampToValueAtTime(0.2, now + offset + 0.05);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + offset + 2.0);
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.start(now + offset); osc.stop(now + offset + 2.1);
+    });
+  }
+
+  function synthMarimba(ctx) {
+    const now = ctx.currentTime;
+    [523.25, 659.25, 783.99, 1046.5, 783.99, 659.25, 523.25, 659.25].forEach((f, i) => {
+      const offset = i * 0.32;
+      const osc = ctx.createOscillator();
+      osc.type = 'triangle';
+      osc.frequency.value = f;
+      const gain = ctx.createGain();
+      gain.gain.setValueAtTime(0.0001, now + offset);
+      gain.gain.exponentialRampToValueAtTime(0.3, now + offset + 0.005);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + offset + 0.5);
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.start(now + offset); osc.stop(now + offset + 0.55);
+    });
+  }
+
+  function synthWindChime(ctx) {
+    const now = ctx.currentTime;
+    [1760, 2093, 2349, 1568, 2637, 1976, 2217, 1480].forEach((f, i) => {
+      const offset = i * 0.28 + Math.random() * 0.08;
+      const osc = ctx.createOscillator();
+      osc.type = 'sine';
+      osc.frequency.value = f;
+      const gain = ctx.createGain();
+      gain.gain.setValueAtTime(0.0001, now + offset);
+      gain.gain.exponentialRampToValueAtTime(0.12, now + offset + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + offset + 1.3);
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.start(now + offset); osc.stop(now + offset + 1.4);
+    });
+  }
+
+  const SOUND_LIBRARY = {
+    bell: synthBell,
+    beep: synthBeep,
+    chime: synthChime,
+    marimba: synthMarimba,
+    windchime: synthWindChime
+  };
+
+  function playSound(key) {
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const fn = SOUND_LIBRARY[key] || SOUND_LIBRARY.bell;
+      fn(ctx);
+    } catch (e) {}
+  }
+
+  // ---------- Rotating background photos ----------
+  // Each location is looked up live against Wikimedia Commons (search + imageinfo),
+  // so the photo returned is always an actual, real photo of that place — not a
+  // random unrelated stock image — and the URL is a server-generated thumbnail at
+  // the exact width we request, so it's never blurrily upscaled.
+  const LOCATIONS = [
+    { name: 'Tokyo, Japan', query: 'Tokyo skyline' },
+    { name: 'New York City, USA', query: 'Manhattan skyline' },
+    { name: 'Paris, France', query: 'Paris cityscape Eiffel Tower' },
+    { name: 'Dubai, UAE', query: 'Dubai skyline' },
+    { name: 'Banff National Park, Canada', query: 'Banff National Park lake' },
+    { name: 'Grand Canyon, USA', query: 'Grand Canyon landscape' },
+    { name: 'Machu Picchu, Peru', query: 'Machu Picchu' },
+    { name: 'Iceland', query: 'Iceland landscape waterfall' },
+    { name: 'Santorini, Greece', query: 'Santorini Oia' },
+    { name: 'Maldives', query: 'Maldives beach' },
+    { name: 'Bora Bora, French Polynesia', query: 'Bora Bora lagoon' },
+    { name: 'Bali, Indonesia', query: 'Bali beach' }
+  ];
+
+  async function fetchCommonsImage(loc) {
+    const endpoint = 'https://commons.wikimedia.org/w/api.php'
+      + '?action=query&generator=search&gsrnamespace=6&gsrlimit=30'
+      + '&gsrsearch=' + encodeURIComponent(loc.query + ' filetype:bitmap -icon -logo -flag -map -diagram -"coat of arms"')
+      + '&prop=imageinfo&iiprop=url|size'
+      + '&iiurlwidth=2200'
+      + '&format=json&origin=*';
+    const res = await fetch(endpoint);
+    if (!res.ok) throw new Error('Commons request failed');
+    const data = await res.json();
+    const pages = data && data.query && data.query.pages;
+    if (!pages) return null;
+    const infos = Object.values(pages)
+      .map(p => p && p.imageinfo && p.imageinfo[0])
+      .filter(info => info && info.thumburl && !/\.svg($|\?)/i.test(info.url));
+
+    let candidates = infos.filter(info =>
+      info.width >= 1200 && info.height >= 700 && (info.width / info.height) > 1.15
+    );
+    if (candidates.length === 0) candidates = infos;
+    if (candidates.length === 0) return null;
+
+    return candidates[Math.floor(Math.random() * candidates.length)].thumburl;
+  }
+
+  function shuffle(arr) {
+    for (let i = arr.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr;
+  }
+
+  let bgOrder = shuffle(LOCATIONS.map((_, i) => i));
+  let bgPos = 0;
+  let layerToggle = false;
+  let rotateTimer = null;
+
+  function nextLocation() {
+    if (bgPos >= bgOrder.length) {
+      bgOrder = shuffle(LOCATIONS.map((_, i) => i));
+      bgPos = 0;
+    }
+    const loc = LOCATIONS[bgOrder[bgPos]];
+    bgPos++;
+    return loc;
+  }
+
+  async function rotateBackground(attempt) {
+    attempt = attempt || 0;
+    if (attempt > 6) return;
+    const loc = nextLocation();
+    let url = null;
+    try {
+      url = await fetchCommonsImage(loc);
+    } catch (e) {
+      url = null;
+    }
+    if (!url) {
+      rotateBackground(attempt + 1);
+      return;
+    }
+    const img = new Image();
+    img.onload = () => {
+      const showLayer = layerToggle ? bgA : bgB;
+      const hideLayer = layerToggle ? bgB : bgA;
+      showLayer.style.backgroundImage = 'url("' + url + '")';
+      showLayer.classList.add('active');
+      hideLayer.classList.remove('active');
+      layerToggle = !layerToggle;
+      captionEl.classList.remove('visible');
+      setTimeout(() => {
+        captionName.textContent = loc.name;
+        captionEl.classList.add('visible');
+      }, 500);
+    };
+    img.onerror = () => rotateBackground(attempt + 1);
+    img.src = url;
+  }
+
+  function scheduleRotation() {
+    if (rotateTimer) clearInterval(rotateTimer);
+    const minutes = Math.max(1, parseInt(rotateMinInput.value, 10) || 3);
+    rotateTimer = setInterval(rotateBackground, minutes * 60 * 1000);
+  }
+
+  function setBackgroundEnabled(enabled) {
+    if (enabled) {
+      bgOverlay.style.display = '';
+      rotateBackground();
+      scheduleRotation();
+    } else {
+      if (rotateTimer) { clearInterval(rotateTimer); rotateTimer = null; }
+      bgA.classList.remove('active');
+      bgB.classList.remove('active');
+      bgOverlay.style.display = 'none';
+      captionEl.classList.remove('visible');
+    }
+  }
+
+  // ---------- Settings persistence ----------
+  let settings = loadSettings();
+  let mode = 'study'; // 'study' | 'break' | 'longbreak'
+  let secondsLeft = settings.studyMin * 60;
+  let totalSeconds = secondsLeft;
+  let running = false;
+  let timerId = null;
+  let completedInCycle = 0;
+
+  applySettingsToInputs();
+  loadTodayCount();
+  refreshStudiedDisplay();
+  updateNextLongBreakDisplay();
+  updateDisplay();
+  updateModeColors();
+  if (settings.bgEnabled) setBackgroundEnabled(true);
+  else bgOverlay.style.display = 'none';
+
+  function loadSettings() {
+    const raw = localStorage.getItem('studyTimerSettings');
+    let s = { studyMin: 25, breakMin: 5, longBreakMin: 15, longBreakEvery: 4, soundKey: 'bell', bgEnabled: true, rotateMin: 3 };
+    if (raw) {
+      try { s = Object.assign(s, JSON.parse(raw)); } catch (e) {}
+    }
+    return s;
+  }
+
+  function saveSettings() {
+    localStorage.setItem('studyTimerSettings', JSON.stringify(settings));
+  }
+
+  function applySettingsToInputs() {
+    studyMinInput.value = settings.studyMin;
+    breakMinInput.value = settings.breakMin;
+    longBreakMinInput.value = settings.longBreakMin;
+    longBreakEveryInput.value = settings.longBreakEvery;
+    soundSelect.value = settings.soundKey;
+    bgToggle.checked = settings.bgEnabled;
+    rotateMinInput.value = settings.rotateMin;
+  }
+
+  function dayKey(prefix) {
+    const d = new Date();
+    return prefix + '_' + d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate();
+  }
+
+  function loadTodayCount() {
+    const count = parseInt(localStorage.getItem(dayKey('studyTimerSessions')) || '0', 10);
+    sessionCountEl.textContent = count;
+  }
+
+  function incrementTodayCount() {
+    const key = dayKey('studyTimerSessions');
+    const count = parseInt(localStorage.getItem(key) || '0', 10) + 1;
+    localStorage.setItem(key, count);
+    sessionCountEl.textContent = count;
+  }
+
+  function formatDuration(totalMinutes) {
+    const h = Math.floor(totalMinutes / 60);
+    const m = totalMinutes % 60;
+    if (h > 0) return h + 'h ' + m + 'm';
+    return m + 'm';
+  }
+
+  function loadTodayMinutes() {
+    return parseInt(localStorage.getItem(dayKey('studyTimerMinutes')) || '0', 10);
+  }
+
+  function refreshStudiedDisplay() {
+    studiedTodayEl.textContent = formatDuration(loadTodayMinutes());
+  }
+
+  function addTodayMinutes(mins) {
+    const key = dayKey('studyTimerMinutes');
+    const total = loadTodayMinutes() + mins;
+    localStorage.setItem(key, total);
+    refreshStudiedDisplay();
+  }
+
+  function updateNextLongBreakDisplay() {
+    const remaining = settings.longBreakEvery - completedInCycle;
+    nextLongBreakEl.textContent = remaining <= 0 ? 'Now' : 'in ' + remaining;
+  }
+
+  function formatTime(totalSecs) {
+    const m = Math.floor(totalSecs / 60).toString().padStart(2, '0');
+    const s = Math.floor(totalSecs % 60).toString().padStart(2, '0');
+    return m + ':' + s;
+  }
+
+  function updateDisplay() {
+    timeDisplay.textContent = formatTime(secondsLeft);
+    const progress = 1 - (secondsLeft / totalSeconds);
+    const offset = CIRCUMFERENCE * (1 - progress);
+    ringProgress.style.strokeDashoffset = offset;
+    document.title = formatTime(secondsLeft) + ' — ' + (mode === 'study' ? 'Study' : 'Break');
+  }
+
+  function updateModeColors() {
+    modeLabel.classList.remove('study', 'break', 'longbreak');
+    startPauseBtn.classList.remove('break-active');
+    if (mode === 'study') {
+      modeLabel.textContent = 'Study Time';
+      modeLabel.classList.add('study');
+      ringProgress.style.stroke = getComputedStyle(document.documentElement).getPropertyValue('--study-color');
+    } else if (mode === 'break') {
+      modeLabel.textContent = 'Short Break';
+      modeLabel.classList.add('break');
+      startPauseBtn.classList.add('break-active');
+      ringProgress.style.stroke = getComputedStyle(document.documentElement).getPropertyValue('--break-color');
+    } else {
+      modeLabel.textContent = 'Long Break';
+      modeLabel.classList.add('longbreak');
+      startPauseBtn.classList.add('break-active');
+      ringProgress.style.stroke = getComputedStyle(document.documentElement).getPropertyValue('--long-break-color');
+    }
+  }
+
+  function setModeDuration() {
+    let minutes;
+    if (mode === 'study') minutes = settings.studyMin;
+    else if (mode === 'break') minutes = settings.breakMin;
+    else minutes = settings.longBreakMin;
+    secondsLeft = minutes * 60;
+    totalSeconds = secondsLeft;
+    updateDisplay();
+  }
+
+  function tick() {
+    secondsLeft--;
+    if (secondsLeft <= 0) {
+      handleModeComplete();
+      return;
+    }
+    updateDisplay();
+  }
+
+  function handleModeComplete() {
+    playSound(settings.soundKey);
+    if (mode === 'study') {
+      completedInCycle++;
+      incrementTodayCount();
+      addTodayMinutes(settings.studyMin);
+      if (completedInCycle >= settings.longBreakEvery) {
+        completedInCycle = 0;
+        mode = 'longbreak';
+      } else {
+        mode = 'break';
+      }
+    } else {
+      mode = 'study';
+    }
+    updateNextLongBreakDisplay();
+    setModeDuration();
+    updateModeColors();
+    startTimer();
+  }
+
+  function startTimer() {
+    if (timerId) return;
+    running = true;
+    startPauseBtn.textContent = 'Pause';
+    timerId = setInterval(tick, 1000);
+    disableSettings(true);
+  }
+
+  function pauseTimer() {
+    running = false;
+    startPauseBtn.textContent = 'Start';
+    clearInterval(timerId);
+    timerId = null;
+  }
+
+  function resetTimer() {
+    pauseTimer();
+    mode = 'study';
+    completedInCycle = 0;
+    updateNextLongBreakDisplay();
+    setModeDuration();
+    updateModeColors();
+    disableSettings(false);
+  }
+
+  function disableSettings(disabled) {
+    [studyMinInput, breakMinInput, longBreakMinInput, longBreakEveryInput].forEach(el => {
+      el.disabled = disabled;
+    });
+  }
+
+  startPauseBtn.addEventListener('click', () => {
+    if (running) pauseTimer();
+    else startTimer();
+  });
+
+  skipBtn.addEventListener('click', () => {
+    pauseTimer();
+    handleModeComplete();
+    pauseTimer();
+  });
+
+  resetBtn.addEventListener('click', resetTimer);
+
+  function openSettings() {
+    settingsOverlay.classList.add('open');
+  }
+  function closeSettings() {
+    settingsOverlay.classList.remove('open');
+  }
+
+  settingsToggle.addEventListener('click', openSettings);
+  settingsCloseBtn.addEventListener('click', closeSettings);
+  settingsOverlay.addEventListener('click', (e) => {
+    if (e.target === settingsOverlay) closeSettings();
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeSettings();
+  });
+
+  [studyMinInput, breakMinInput, longBreakMinInput, longBreakEveryInput].forEach(input => {
+    input.addEventListener('change', () => {
+      settings.studyMin = Math.max(1, parseInt(studyMinInput.value, 10) || 25);
+      settings.breakMin = Math.max(1, parseInt(breakMinInput.value, 10) || 5);
+      settings.longBreakMin = Math.max(1, parseInt(longBreakMinInput.value, 10) || 15);
+      settings.longBreakEvery = Math.max(1, parseInt(longBreakEveryInput.value, 10) || 4);
+      saveSettings();
+      updateNextLongBreakDisplay();
+      if (!running) setModeDuration();
+    });
+  });
+
+  soundSelect.addEventListener('change', () => {
+    settings.soundKey = soundSelect.value;
+    saveSettings();
+  });
+
+  testSoundBtn.addEventListener('click', () => {
+    playSound(soundSelect.value);
+  });
+
+  bgToggle.addEventListener('change', () => {
+    settings.bgEnabled = bgToggle.checked;
+    saveSettings();
+    setBackgroundEnabled(settings.bgEnabled);
+  });
+
+  rotateMinInput.addEventListener('change', () => {
+    settings.rotateMin = Math.max(1, parseInt(rotateMinInput.value, 10) || 3);
+    saveSettings();
+    if (settings.bgEnabled) scheduleRotation();
+  });
+
+  setModeDuration();
+})();
+</script>
+
+</body>
+</html>
